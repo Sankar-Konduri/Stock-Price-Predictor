@@ -1,0 +1,1 @@
+//interface for Simple Moving Avgerages method 

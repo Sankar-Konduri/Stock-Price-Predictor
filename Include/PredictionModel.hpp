@@ -1,0 +1,1 @@
+//Interface for what all the prediction models should at min 

@@ -1,0 +1,1 @@
+//Interface for the Weighing Moving Averages 
