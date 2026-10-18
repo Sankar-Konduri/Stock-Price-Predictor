@@ -1,1 +1,0 @@
-//Blueprint(interface) of what to store from the Stock data 
