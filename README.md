@@ -5,9 +5,9 @@ A modular C++17 command-line application that forecasts stock closing prices fro
 > This is a learning/engineering project. Forecasts are statistical extrapolations of past prices, **not investment advice to anyone**.
 
 ## Done by
--K.Sankar - 092
--P.Daman- 771
--N.Sathwik Raghava - 859
+- K.Sankar - 092
+- P.Daman- 771
+- N.Sathwik Raghava - 859
 
 
 
