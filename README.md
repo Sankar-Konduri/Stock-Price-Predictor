@@ -2,18 +2,16 @@
 
 A modular C++17 command-line application that forecasts stock closing prices from historical CSV data. It runs several independent statistical models, combines them into an **ensemble forecast**, and reports how much the models agree with each other.
 
-> This is a learning/engineering project. Forecasts are statistical extrapolations of past prices, **not investment advice to anyone**.
+> This is a learning/engineering project. Forecasts are statistical extrapolations of past prices, **not investment advice**.
 
 ## Done by
 - K.Sankar - 092
 - P.Daman- 771
 - N.Sathwik Raghava - 859
 
-
-
 ## Features
 
-- Loads and validates historical OHLCV data from CSV (malformed rows are reported, never silently replaced with zero).
+- Loads and validates historical OHLCV data from CSV, including nasdaq.com and Yahoo Finance downloads (malformed rows are reported, never silently replaced with zero).
 - Three independent models behind one abstract interface: Simple Moving Average (SMA), Weighted Moving Average (WMA) and Linear Regression.
 - Ensemble forecast with equal or custom weights, per-day disagreement diagnostics, and safe handling of failing models.
 - Menu-driven CLI: load data, view summary statistics, configure models, generate a forecast, inspect individual model predictions.
@@ -50,7 +48,7 @@ Main menu:
  6. Exit
 ```
 
-- **Load** accepts any CSV path; pressing Enter uses `data/historical_prices.csv`. If a load fails, previously loaded data is kept.
+- **Load** accepts any CSV path, including one pasted from Windows Explorer's "Copy as path" (surrounding quotes are ignored). Pressing Enter uses `data/historical_prices.csv`. If a load fails, previously loaded data is kept.
 - **Configure** sets the SMA window, WMA window, Linear Regression lookback (0 = all history), forecast horizon (1-365 trading days), and ensemble weights (`equal` or three custom numbers, which are normalized).
 - **Generate forecast** prints, in this order: the combined forecast, individual model predictions, model weights, forecast changes vs the last close, and diagnostics.
 
@@ -58,20 +56,28 @@ Forecast days are labelled `+1`, `+2`, ... (trading days after the last observat
 
 ## CSV format
 
-The first non-blank line is a header. Required columns (case-insensitive, any order): `Date`, `Open`, `High`, `Low`, `Close`, `Volume`. Extra columns, such as Yahoo Finance's `Adj Close`, are ignored.
+The first non-blank line is a header. Required columns (case-insensitive, any order): `Date`, `Open`, `High`, `Low`, `Close`, `Volume`. `Close/Last` (the name nasdaq.com uses) is accepted for Close. Extra columns, such as Yahoo Finance's `Adj Close`, are ignored.
 
 ```
 Date,Open,High,Low,Close,Volume
 2024-01-02,100.00,101.50,99.20,100.80,1200000
 ```
 
+A nasdaq.com download works as is:
+
+```
+Date,Close/Last,Volume,Open,High,Low
+02/28/2024,$111.60,1480000,$112.00,$112.80,$111.10
+```
+
 | Field | Rule |
 |---|---|
-| Date | Real calendar date as `YYYY-MM-DD` (leap years handled). Other formats are rejected. |
-| Open/High/Low/Close | Finite and greater than 0, with `low <= min(open, close)` and `high >= max(open, close)`. |
-| Volume | Whole number, 0 or greater. |
+| Date | A real calendar date as `YYYY-MM-DD` or `MM/DD/YYYY` (US order; leap years handled). Stored internally as `YYYY-MM-DD`. Day-first dates (`DD/MM/YYYY`) are **not** supported: `25/01/2024` is rejected, and an ambiguous `01/02/2024` is read as January 2. |
+| Open/High/Low/Close | Finite and greater than 0, with `low <= min(open, close)` and `high >= max(open, close)`. A leading `$` is accepted. |
+| Volume | Whole number, 0 or greater. Required: files without a Volume column are rejected. |
+| Thousands separators | Accepted in prices and volume only in correct grouping (`1,234.50`, `12,345,678`). Anything else with a comma, such as the European decimal `10,5`, is rejected rather than guessed. |
 
-Other behaviour: blank lines are ignored; CRLF line endings and a UTF-8 BOM are handled; double quotes may wrap a field. Rows with a wrong field count, missing or non-numeric values, NaN/infinity, or invalid OHLC relationships are **skipped and reported with their line number**. Rows out of date order are sorted. Duplicate dates keep the first row and are reported. An input with no valid rows is an error.
+Other behaviour: blank lines are ignored; CRLF line endings and a UTF-8 BOM are handled; double quotes may wrap a field (needed for values containing commas). Rows with a wrong field count, missing or non-numeric values, NaN/infinity, or invalid OHLC relationships are **skipped and reported with their line number**. Rows out of date order (nasdaq.com files are newest-first) are sorted. Duplicate dates keep the first row and are reported. An input with no valid rows is an error.
 
 > `data/historical_prices.csv` ships with **synthetic sample data** (40 rows) for development. It is not real market data. Replace it with a real export for meaningful forecasts.
 

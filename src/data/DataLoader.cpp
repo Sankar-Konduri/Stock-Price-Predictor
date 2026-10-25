@@ -27,15 +27,73 @@ std::string toLower(std::string s) {
     return s;
 }
 
+// "\"D:\\data\\file.csv\"" -> "D:\\data\\file.csv" (only when the quotes match).
+std::string stripMatchingQuotes(const std::string& s) {
+    if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front()) {
+        return trim(s.substr(1, s.size() - 2));
+    }
+    return s;
+}
+
+// Prepares numeric text for strtod/strtoll:
+//   - optionally removes one leading '$' (prices only);
+//   - accepts thousands separators ONLY in correct grouping
+//     ("1,234", "12,345,678.90"); anything else with a comma, such as the
+//     European decimal "10,5" or "1,23.45", is rejected rather than misread.
+std::string normalizeNumericText(const std::string& s, const std::string& column,
+                                 bool allowDollar) {
+    std::string t = s;
+    if (allowDollar && !t.empty() && t.front() == '$') {
+        t.erase(0, 1);
+    }
+    if (t.find(',') == std::string::npos) {
+        return t;
+    }
+
+    const std::size_t dot = t.find('.');
+    const std::string intPart = t.substr(0, dot);  // whole string if there is no '.'
+    const std::string rest = (dot == std::string::npos) ? std::string() : t.substr(dot);
+
+    bool ok = rest.find(',') == std::string::npos;
+    std::string joined;
+    std::size_t start = 0;
+    bool first = true;
+    while (ok) {
+        const std::size_t comma = intPart.find(',', start);
+        const std::size_t length =
+            (comma == std::string::npos) ? std::string::npos : comma - start;
+        const std::string group = intPart.substr(start, length);
+
+        bool digitsOnly = !group.empty();
+        for (char c : group) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) digitsOnly = false;
+        }
+        const bool sizeOk = first ? (group.size() <= 3) : (group.size() == 3);
+        if (!digitsOnly || !sizeOk) {
+            ok = false;
+            break;
+        }
+        joined += group;
+        first = false;
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    if (!ok) {
+        throw DataError(column + ": '" + s + "' is not a valid number");
+    }
+    return joined + rest;
+}
+
 double parseDouble(const std::string& raw, const std::string& column) {
     const std::string s = trim(raw);
     if (s.empty()) {
         throw DataError(column + " is missing (empty field)");
     }
+    const std::string cleaned = normalizeNumericText(s, column, /*allowDollar=*/true);
     char* end = nullptr;
     errno = 0;
-    const double value = std::strtod(s.c_str(), &end);
-    if (end == s.c_str() || *end != '\0') {
+    const double value = std::strtod(cleaned.c_str(), &end);
+    if (end == cleaned.c_str() || *end != '\0') {
         throw DataError(column + ": '" + s + "' is not a valid number");
     }
     if (errno == ERANGE || !std::isfinite(value)) {
@@ -49,10 +107,11 @@ std::int64_t parseInt64(const std::string& raw, const std::string& column) {
     if (s.empty()) {
         throw DataError(column + " is missing (empty field)");
     }
+    const std::string cleaned = normalizeNumericText(s, column, /*allowDollar=*/false);
     char* end = nullptr;
     errno = 0;
-    const long long value = std::strtoll(s.c_str(), &end, 10);
-    if (end == s.c_str() || *end != '\0') {
+    const long long value = std::strtoll(cleaned.c_str(), &end, 10);
+    if (end == cleaned.c_str() || *end != '\0') {
         throw DataError(column + ": '" + s + "' is not a valid whole number");
     }
     if (errno == ERANGE) {
@@ -98,6 +157,27 @@ bool DataLoader::isValidIsoDate(const std::string& date) {
     return day <= maxDay;
 }
 
+std::optional<std::string> DataLoader::normalizeDate(const std::string& text) {
+    const std::string s = trim(text);
+    if (isValidIsoDate(s)) {
+        return s;
+    }
+    // US order MM/DD/YYYY, as used by nasdaq.com downloads.
+    if (s.size() == 10 && s[2] == '/' && s[5] == '/') {
+        bool digits = true;
+        for (std::size_t i : {0u, 1u, 3u, 4u, 6u, 7u, 8u, 9u}) {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) digits = false;
+        }
+        if (digits) {
+            const std::string iso = s.substr(6, 4) + "-" + s.substr(0, 2) + "-" + s.substr(3, 2);
+            if (isValidIsoDate(iso)) {
+                return iso;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<std::string> DataLoader::splitCsvLine(const std::string& line) {
     std::vector<std::string> fields;
     std::string current;
@@ -133,21 +213,27 @@ std::vector<std::string> DataLoader::splitCsvLine(const std::string& line) {
 }
 
 ColumnMap DataLoader::parseHeader(const std::vector<std::string>& headerFields) {
-    static const char* const names[6] = {"date", "open", "high", "low", "close", "volume"};
+    static const char* const displayNames[6] = {"Date", "Open", "High", "Low", "Close", "Volume"};
     std::size_t positions[6] = {0, 0, 0, 0, 0, 0};
     bool found[6] = {false, false, false, false, false, false};
 
     for (std::size_t i = 0; i < headerFields.size(); ++i) {
         const std::string name = toLower(trim(headerFields[i]));
-        for (int k = 0; k < 6; ++k) {
-            if (name == names[k]) {
-                if (found[k]) {
-                    throw DataError(std::string("header contains column '") + names[k] +
-                                    "' more than once");
-                }
-                found[k] = true;
-                positions[k] = i;
+        int k = -1;
+        if (name == "date") k = 0;
+        else if (name == "open") k = 1;
+        else if (name == "high") k = 2;
+        else if (name == "low") k = 3;
+        else if (name == "close" || name == "close/last") k = 4;  // nasdaq.com uses Close/Last
+        else if (name == "volume") k = 5;
+
+        if (k >= 0) {
+            if (found[k]) {
+                throw DataError(std::string("header contains the ") + displayNames[k] +
+                                " column more than once");
             }
+            found[k] = true;
+            positions[k] = i;
         }
     }
 
@@ -155,7 +241,7 @@ ColumnMap DataLoader::parseHeader(const std::vector<std::string>& headerFields) 
     for (int k = 0; k < 6; ++k) {
         if (!found[k]) {
             if (!missing.empty()) missing += ", ";
-            missing += names[k];
+            missing += displayNames[k];
         }
     }
     if (!missing.empty()) {
@@ -205,10 +291,17 @@ StockRecord DataLoader::parseRecord(const std::vector<std::string>& fields,
     }
 
     StockRecord record;
-    record.date = trim(fields[columns.date]);
-    if (record.date.empty()) {
+    const std::string rawDate = trim(fields[columns.date]);
+    if (rawDate.empty()) {
         throw DataError("Date is missing (empty field)");
     }
+    const std::optional<std::string> isoDate = normalizeDate(rawDate);
+    if (!isoDate) {
+        throw DataError("date '" + rawDate +
+                        "' is not a valid date (use YYYY-MM-DD or MM/DD/YYYY)");
+    }
+    record.date = *isoDate;
+
     record.open = parseDouble(fields[columns.open], "Open");
     record.high = parseDouble(fields[columns.high], "High");
     record.low = parseDouble(fields[columns.low], "Low");
@@ -249,9 +342,10 @@ std::vector<double> DataLoader::extractClosingPrices(
 }
 
 LoadResult DataLoader::loadFromFile(const std::string& path) const {
-    std::ifstream file(path);
+    const std::string cleanPath = stripMatchingQuotes(trim(path));
+    std::ifstream file(cleanPath);
     if (!file.is_open()) {
-        throw DataError("cannot open file '" + path + "'");
+        throw DataError("cannot open file '" + cleanPath + "'");
     }
     return loadFromStream(file);
 }

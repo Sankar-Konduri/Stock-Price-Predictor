@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <iosfwd>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -56,9 +57,14 @@ struct LoaderOptions {
  *
  * CSV format:
  *   - First non-blank line is a header containing (case-insensitive, any
- *     order): Date, Open, High, Low, Close, Volume. Extra columns are ignored.
+ *     order): Date, Open, High, Low, Close, Volume. "Close/Last" (the name
+ *     used by nasdaq.com downloads) is accepted for Close. Extra columns are
+ *     ignored.
  *   - Fields are comma-separated; double quotes may wrap a field.
- *   - Date is YYYY-MM-DD and must be a real calendar date.
+ *   - Date is YYYY-MM-DD or MM/DD/YYYY (US order) and must be a real calendar
+ *     date. Records always store the ISO form YYYY-MM-DD.
+ *   - Prices may start with '$'. Prices and volume may use thousands
+ *     separators, but only in correct grouping (1,234.50 or 12,345,678).
  *   - Prices are finite and > 0; low <= min(open, close);
  *     high >= max(open, close). Volume is a whole number >= 0.
  *   - Blank lines are ignored. A UTF-8 BOM and CRLF line endings are handled.
@@ -69,6 +75,8 @@ public:
 
     const LoaderOptions& options() const { return options_; }
 
+    /// `path` may be wrapped in matching single or double quotes and padded
+    /// with spaces (as pasted from Windows Explorer's "Copy as path").
     /// @throws DataError if the file cannot be opened or holds no valid data.
     LoadResult loadFromFile(const std::string& path) const;
 
@@ -99,6 +107,11 @@ public:
 
     /// True for a real calendar date written as YYYY-MM-DD (leap years handled).
     static bool isValidIsoDate(const std::string& date);
+
+    /// Converts a YYYY-MM-DD or MM/DD/YYYY date to YYYY-MM-DD.
+    /// Returns an empty optional if the text is not a real calendar date in
+    /// one of those two forms.
+    static std::optional<std::string> normalizeDate(const std::string& text);
 
     /// Splits one CSV line into fields (supports "quoted, fields" and "" escapes).
     /// @throws DataError on an unterminated quote.
