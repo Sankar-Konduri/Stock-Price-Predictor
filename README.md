@@ -37,16 +37,29 @@ Run from the project root so the default data path resolves:
 .\build\stock_predictor.exe
 ```
 
-Main menu:
+## Main menu:
 
-```
- 1. Load historical stock data
- 2. View data and summary statistics
- 3. Configure model parameters
- 4. Generate ensemble forecast
- 5. Display individual model predictions
- 6. Exit
-```
+
+ ### 1. Load historical stock data
+<img width="1196" height="498" alt="image" src="https://github.com/user-attachments/assets/5b19a9a8-ea5b-463c-a192-8888b5c02107" />
+
+ ### 2. View data and summary statistics
+<img width="977" height="742" alt="image" src="https://github.com/user-attachments/assets/26a3ca2a-256a-42b9-9db0-582777a19951" />
+
+``with automatic format adjusting``
+
+ ### 3. Configure model parameters
+ <img width="1057" height="413" alt="image" src="https://github.com/user-attachments/assets/c4ce5d66-d8ee-436b-8b8c-1034173776ef" />
+
+ ### 4. Generate ensemble forecast
+<img width="1177" height="827" alt="image" src="https://github.com/user-attachments/assets/b17c109d-9edd-4d68-ac1e-0cec23c8eea8" />
+<img width="1177" height="827" alt="image" src="https://github.com/user-attachments/assets/3fefdcfe-a2fb-47b2-a70a-2eccbb0ebbd2" />
+
+ ### 5. Display individual model predictions
+ <img width="1191" height="557" alt="image" src="https://github.com/user-attachments/assets/179d83e3-49fb-4171-9b66-e47c6d31ccf5" />
+
+ ### 6. Exit
+
 
 - **Load** accepts any CSV path, including one pasted from Windows Explorer's "Copy as path" (surrounding quotes are ignored). Pressing Enter uses `data/historical_prices.csv`. If a load fails, previously loaded data is kept.
 - **Configure** sets the SMA window, WMA window, Linear Regression lookback (0 = all history), forecast horizon (1-365 trading days), and ensemble weights (`equal` or three custom numbers, which are normalized).
